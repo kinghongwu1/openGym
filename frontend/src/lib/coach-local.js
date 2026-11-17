@@ -22,12 +22,7 @@ import { runPipeline } from '../../../api/coach/core/pipeline.js'
 import { waitingProposal } from '../../../api/coach/core/pending.js'
 import { isDue, FINAL_FAILURES, RETRY_AFTER_MS } from '../../../api/coach/core/due.js'
 import { HTTP_PROVIDERS, baseUrlFor, phoneMayCall } from '../../../api/coach/core/providers.js'
-import anthropic from '../../../api/coach/core/adapters/anthropic.js'
-import openai from '../../../api/coach/core/adapters/openai.js'
-import gemini from '../../../api/coach/core/adapters/gemini.js'
-import minimax from '../../../api/coach/core/adapters/minimax.js'
-import openrouter from '../../../api/coach/core/adapters/openrouter.js'
-import compatible from '../../../api/coach/core/adapters/compatible.js'
+import deepseek from '../../../api/coach/core/adapters/deepseek.js'
 import { modelSubstitute, compatProfile, rememberCompatProfile } from '../../../api/coach/core/adapters/http.js'
 import { nativeFetch } from './capacitor-fetch.js'
 import { getApiKey } from './coach-secrets.js'
@@ -36,7 +31,7 @@ import { planHash } from './coach.js'
 import { todayISO } from './format.js'
 import { t, getLang } from './i18n.js'
 
-export const ADAPTERS = { anthropic, openai, gemini, minimax, openrouter, compatible }
+export const ADAPTERS = { deepseek }
 // Ten minutes for a cloud API: a thinking model can take several before its last word, and the
 // answer streams (#1035), so a long wait is a live connection, not a hung one. A model on
 // somebody's laptop is slower still, so the OpenAI-compatible endpoint gets the long budget.
@@ -145,8 +140,6 @@ export async function localScheduled(S, now = new Date()) {
   if (d.mode !== 'byok' || !ADAPTERS[d.provider]) return null
   // A proposal nobody has answered is not replaced by the next one, as on the server.
   if (d.pending && !(d.pending.expiresAt && d.pending.expiresAt < now.getTime())) return null
-  const cap = await capState()
-  if (cap.limit > 0 && cap.used >= cap.limit) return null
   const tz = deviceZone()
   if (!isDue(S.coach, S, wallClock(now), d.reviewedAt || 0, tz)) return null
   try { return await start(S, 'review', { scheduled: true }) } catch { return null }
@@ -194,10 +187,7 @@ async function start(S, kind, opts) {
   const d = await loadCoachDevice()
   const adapter = ADAPTERS[d.provider]
   if (d.mode !== 'byok' || !adapter) throw Object.assign(new Error(t('The Coach isn’t set up on this phone.')), { status: 503, code: 'off' })
-  const cap = await capState()
-  // 0 is the documented "no limit" (the dial's own floor), same as the instance cap.
-  if (cap.limit > 0 && cap.used >= cap.limit) throw Object.assign(new Error(t('The Coach is taking a breather. You’ve used today’s {0} runs on this phone.', cap.limit)), { status: 429, code: 'cap' })
-
+  // No daily cap on this fork. A stored dial from an older build is not enforced.
   await bumpDaily()
   job = { id: 'local-' + Date.now().toString(36), kind, state: 'running', startedAt: Date.now(), ...(opts.scheduled ? { trigger: 'scheduled' } : {}) }
   lastError = null

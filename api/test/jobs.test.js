@@ -54,15 +54,17 @@ test('one job per profile at a time', async () => {
   await settle(uid);
 });
 
-test('the daily cap is enforced and reported as its own failure', async () => {
+test('a stored daily cap does not stop the next job', async () => {
   const uid = 'u-cap';
   writeState(DIR, uid, sampleState());
   cfg.save({ caps: { perProfileDaily: 1, instanceDaily: 0 } });
   jobs.enqueue(uid, { kind: 'review' });
   await settle(uid);
-  assert.throws(() => jobs.enqueue(uid, { kind: 'review' }), e => e.code === 'cap');
-  assert.equal(jobs.capState(uid).used, 1);
-  cfg.save({ caps: { perProfileDaily: 10, instanceDaily: 0 } });
+  assert.equal(jobs.capState(uid).limit, 0);
+  assert.doesNotThrow(() => jobs.enqueue(uid, { kind: 'review' }));
+  await settle(uid);
+  assert.equal(jobs.capState(uid).used, 2);
+  cfg.save({ caps: { perProfileDaily: 0, instanceDaily: 0 } });
 });
 
 

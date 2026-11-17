@@ -19,6 +19,7 @@ import anthropic from '../core/adapters/anthropic.js';
 import openai from '../core/adapters/openai.js';
 import gemini from '../core/adapters/gemini.js';
 import minimax from '../core/adapters/minimax.js';
+import deepseek from '../core/adapters/deepseek.js';
 import openrouter from '../core/adapters/openrouter.js';
 import compatible from '../core/adapters/compatible.js';
 import chatgpt from './chatgpt.js';
@@ -51,6 +52,6 @@ const fixture = {
    isConnected() keeps the Coach out of /api/config entirely. Codex is here too, and unlike
    the SDK its runtime is a CLI binary, so its absence shows up as a spawn error from check(). */
 // chatgpt exactly when config.PROVIDERS has its row (COACH_CHATGPT_PLAN=on, a preview).
-const ADAPTERS = { fixture, claude, codex, anthropic, openai, gemini, minimax, openrouter, compatible, ...(chatgptPlanOn() ? { chatgpt } : {}) };
+const ADAPTERS = { fixture, claude, codex, anthropic, openai, gemini, minimax, deepseek, openrouter, compatible, ...(chatgptPlanOn() ? { chatgpt } : {}) };
 export const adapterFor = provider => ADAPTERS[provider] || null;
 export default ADAPTERS;

@@ -48,9 +48,11 @@ test('forgetting a profile does not hand it a fresh daily cap', async () => {
     assert.equal(s.pending, null, 'the proposal is gone');
     assert.deepEqual(jobs.readUser(uid).history, [], 'the history is gone');
     assert.equal(s.cap.used, 1, 'the day\'s count is a spending record, not the profile\'s data');
-    assert.throws(() => jobs.enqueue(uid, { kind: 'review' }), e => e.code === 'cap');
+    assert.equal(s.cap.limit, 0);
+    assert.doesNotThrow(() => jobs.enqueue(uid, { kind: 'review' }));
+    await settle(uid);
   } finally {
-    cfg.save({ caps: { perProfileDaily: 10, instanceDaily: 0 } });
+    cfg.save({ caps: { perProfileDaily: 0, instanceDaily: 0 } });
   }
 });
 
@@ -69,48 +71,41 @@ test('with nothing spent today, forget leaves no file at all', () => {
 
 /* ---------- the instance cap ---------- */
 
-test('the instance cap is reserved at enqueue, so a job still running already counts', async () => {
-  cfg.save({ caps: { perProfileDaily: 10, instanceDaily: 1 }, daily: null, log: [] });
+test('a second profile is not refused while the first job is still running', async () => {
+  cfg.save({ caps: { perProfileDaily: 1, instanceDaily: 1 }, daily: null, log: [] });
   try {
     writeState(DIR, 'u-inst-1', sampleState());
     writeState(DIR, 'u-inst-2', sampleState());
     jobs.enqueue('u-inst-1', { kind: 'review' });
     assert.ok(jobs.status('u-inst-1').job, 'the first job is on its way');
-    assert.throws(() => jobs.enqueue('u-inst-2', { kind: 'review' }), e => e.code === 'cap',
-      'the second profile is refused before the first job has finished');
+    assert.doesNotThrow(() => jobs.enqueue('u-inst-2', { kind: 'review' }));
     await settle('u-inst-1');
+    await settle('u-inst-2');
     assert.equal(lastOutcome('u-inst-1').outcome, 'ready');
-    assert.deepEqual(cfg.load().daily, { date: today, count: 1 });
+    assert.equal(cfg.load().daily.count, 2);
   } finally {
-    cfg.save({ caps: { perProfileDaily: 10, instanceDaily: 0 } });
+    cfg.save({ caps: { perProfileDaily: 0, instanceDaily: 0 } });
   }
 });
 
-test('the instance count is not bounded by the length of the job log', () => {
+test('a high stored instance count does not block the next job', () => {
   const uid = 'u-inst-150';
   writeState(DIR, uid, sampleState());
   cfg.save({ caps: { perProfileDaily: 10, instanceDaily: 150 }, daily: { date: today, count: 150 }, log: [] });
   try {
-    assert.throws(() => jobs.enqueue(uid, { kind: 'review' }), e => e.code === 'cap',
-      'a hundred and fifty jobs today trip a cap of a hundred and fifty, empty log or not');
-    // Yesterday's count is nobody's business today.
-    cfg.save({ daily: { date: '2000-01-01', count: 150 } });
     assert.doesNotThrow(() => jobs.enqueue(uid, { kind: 'review' }));
-    assert.deepEqual(cfg.load().daily, { date: today, count: 1 });
+    assert.equal(cfg.load().daily.count, 151);
   } finally {
-    cfg.save({ caps: { perProfileDaily: 10, instanceDaily: 0 } });
+    cfg.save({ caps: { perProfileDaily: 0, instanceDaily: 0 }, daily: null });
   }
   return settle(uid);
 });
 
-test('a job the daily caps refuse does not bind the instance credential', () => {
-  // A personal credential belongs to the first profile that spends it. A job refused for the
-  // day spends nothing, but the bind used to come before the caps, so a profile that asked on a
-  // day the caps were already reached took the owner's account with it, and from then on every
-  // other profile was refused as sharing it.
+test('spending a personal credential binds it, and another profile is refused', async () => {
   const prev = cfg.load();
   cfg.save({
     provider: 'claude', authMode: 'instance', boundUid: {},
+    caps: { perProfileDaily: 1, instanceDaily: 1 },
     auth: { claude: { type: 'cli-token', account: 'owner@example.test', data: cfg.encrypt({ token: 'tok-instance' }) } }
   });
   try {
@@ -118,28 +113,17 @@ test('a job the daily caps refuse does not bind the instance credential', () => 
     writeState(DIR, own, sampleState());
     fs.mkdirSync(`${DIR}/coach`, { recursive: true });
     fs.writeFileSync(userFile(own), JSON.stringify({ daily: { date: today, count: 1 }, history: [] }));
-    cfg.save({ caps: { perProfileDaily: 1, instanceDaily: 0 } });
-    assert.throws(() => jobs.enqueue(own, { kind: 'review' }), e => e.code === 'cap' && e.message === 'daily limit reached');
-    assert.equal(cfg.boundUidFor(), null, 'a profile over its own cap did not take the credential');
+    assert.doesNotThrow(() => jobs.enqueue(own, { kind: 'review' }));
+    assert.equal(cfg.boundUidFor(), own);
 
     const inst = 'u-cap-bind-inst';
     writeState(DIR, inst, sampleState());
-    cfg.save({ caps: { perProfileDaily: 10, instanceDaily: 1 }, daily: { date: today, count: 1 } });
-    assert.throws(() => jobs.enqueue(inst, { kind: 'review' }), e => e.code === 'cap' && /instance/.test(e.message));
-    assert.equal(cfg.boundUidFor(), null, 'nor did one the instance cap refused');
-
-    // Not vacuous: this is a credential that binds on spend.
-    cfg.bindInstanceCredential(own);
-    assert.equal(cfg.boundUidFor(), own);
-
-    // The refusals ahead of the caps still come first, caps reached or not: a profile the
-    // credential is bound away from hears that it is someone else's account, and a profile with
-    // no account of its own hears that, rather than "try again tomorrow".
     assert.throws(() => jobs.enqueue(inst, { kind: 'review' }), e => e.code === 'shared');
     cfg.save({ authMode: 'profile' });
     assert.throws(() => jobs.enqueue(inst, { kind: 'review' }), e => e.code === 'off' && e.message === 'this profile has no provider account connected');
+    await settle(own);
   } finally {
-    cfg.save({ provider: prev.provider, authMode: prev.authMode, boundUid: prev.boundUid, auth: prev.auth, daily: prev.daily, caps: { perProfileDaily: 10, instanceDaily: 0 } });
+    cfg.save({ provider: prev.provider, authMode: prev.authMode, boundUid: prev.boundUid, auth: prev.auth, daily: prev.daily, caps: { perProfileDaily: 0, instanceDaily: 0 } });
   }
 });
 

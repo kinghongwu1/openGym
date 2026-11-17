@@ -153,10 +153,7 @@ export default function AdminCoach() {
 
   // Chips, grouped.
   const groups = [
-    { title: 'Paste an API key', hint: 'Plain HTTPS to the provider. Works on the default api image, nothing extra to install.', items: d.providers.filter(p => p.http) },
-    { title: 'Runs a local AI runtime', hint: 'Needs the bigger api image built with --target coach.', items: d.providers.filter(p => RUNTIME_IDS.includes(p.id)) },
-    { title: 'Sign in with your plan (preview)', hint: 'Your ChatGPT Plus or Pro plan pays for the Coach. Switched on with COACH_CHATGPT_PLAN=on; for your own instance (OpenAI asks hosted apps to apply first).', items: d.providers.filter(p => p.signIn === 'chatgpt') },
-    { title: 'Testing', hint: 'A built-in fake that answers instantly, so the whole loop can be tried without an account.', items: d.providers.filter(p => TESTING_IDS.includes(p.id)) }
+    { title: 'Paste an API key', hint: 'DeepSeek only. Plain HTTPS to api.deepseek.com, on the default api image.', items: d.providers.filter(p => p.id === 'deepseek') }
   ]
 
   const hasCredentialStep = !!(meta.setupToken || meta.apiKey || meta.signIn === 'chatgpt')
@@ -187,8 +184,8 @@ export default function AdminCoach() {
       <h2>AI Coach</h2>
       <p>An optional coach that designs training plans and reviews what people actually log. Off right now, so nobody sees it anywhere in the app.</p>
       <div className="adm-hero-feats">
-        <div><Icon name="key" /><span><b>Bring any AI.</b> An API key from Anthropic, OpenAI or Gemini, or a free local model via Ollama.</span></div>
-        <div><Icon name="chat" /><span><b>Or skip the key.</b> With <code>MCP=on</code> everyone can add openGym to the Claude, ChatGPT or Gemini they already pay for: Settings, Use your subscription.</span></div>
+        <div><Icon name="key" /><span><b>DeepSeek.</b> Paste your own API key from platform.deepseek.com. The Coach calls api.deepseek.com and nothing else.</span></div>
+        <div><Icon name="chat" /><span><b>Your key, your bill.</b> The key stays encrypted on this server. No other AI provider is offered.</span></div>
         <div><Icon name="shield" /><span><b>Private by design.</b> A strict allowlist decides what leaves; every change needs the user's yes and can be undone.</span></div>
         <div><Icon name="person" /><span><b>Each user decides.</b> Turning it on only makes the Coach available; every person consents for themselves.</span></div>
       </div>
@@ -348,14 +345,7 @@ export default function AdminCoach() {
         <summary>Advanced <Icon name="chevronRight" className="chev" /></summary>
         <div className="adm-fold-b">
           <div className="adm-group-t">Limits</div>
-          <div className="adm-hint">How many Coach runs are allowed per day. Every run is one request on the provider account above. 0 means no limit.</div>
-          <div className="adm-kv"><span className="k">Per user, per day</span>
-            <span className="v"><input className="num" type="number" min="0" max="200" defaultValue={d.caps.perProfileDaily} disabled={busy}
-              onBlur={capBlur('perProfileDaily')} /></span></div>
-          <div className="adm-kv"><span className="k">Whole instance, per day</span>
-            <span className="v"><input className="num" type="number" min="0" max="5000" defaultValue={d.caps.instanceDaily} disabled={busy}
-              onBlur={capBlur('instanceDaily')} /></span></div>
-          <div className="adm-hint" style={{ marginTop: 10 }}>How long a chat message, refinement or review note can be. The chat composer and the server both enforce this.</div>
+          <div className="adm-hint">There is no daily cap on Coach runs. How long a chat message, refinement or review note can be is below. The chat composer and the server both enforce this.</div>
           <div className="adm-kv"><span className="k">Max message length</span>
             <span className="v"><input className="num" type="number" min="200" max="4000" defaultValue={d.maxMessageLen} disabled={busy}
               onBlur={e => +e.target.value !== d.maxMessageLen && patch({ maxMessageLen: +e.target.value })} /></span></div>

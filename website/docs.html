@@ -845,9 +845,7 @@ ALLOW_GUEST=0              # remove "Continue without account"</code></pre>
      Then nobody is admin yet, and that comes first: <a href="#admin">make yourself admin</a>.
      There's no <code>.env</code> switch for the Coach itself.</p>
   <table class="cfg">
-    <tr><td><b>Anthropic, OpenAI, Google&nbsp;Gemini</b></td><td>Paste an API key from the provider's console. Plain HTTPS from the api process — runs on the default image.</td></tr>
-    <tr><td><b>OpenAI-compatible endpoint</b></td><td>Any server that speaks the Chat Completions API: <b>Ollama</b>, <b>LM Studio</b>, <b>vLLM</b>, <b>OpenRouter</b>, a gateway of your own. A key only if the endpoint wants one. Also the default image.</td></tr>
-    <tr><td><b>Claude Agent SDK / Codex CLI</b></td><td>Run a real AI runtime inside the container — the one case that needs the bigger build: <code>API_TARGET=coach docker compose up -d --build api</code></td></tr>
+    <tr><td><b>DeepSeek</b></td><td>The only Coach provider in this fork. Paste an API key from <a href="https://platform.deepseek.com/api_keys">platform.deepseek.com</a>. The base URL is <code>https://api.deepseek.com</code>. <b>List models</b> fills the picker; <code>deepseek-flash</code> is only where a fresh setup starts. Thinking is off, so a plan is not cut off by a hidden chain of thought. Plain HTTPS, on the default image.</td></tr>
   </table>
 
   <h3 id="coach-local">Run it fully local — no cloud, no cost</h3>

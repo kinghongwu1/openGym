@@ -54,8 +54,40 @@ async function settle() {
 describe('the Coach on a phone with its own key', () => {
   beforeEach(async () => {
     _resetCoachDevice(); local._resetLocal()
-    device.data = { mode: 'byok', provider: 'openai', model: 'gpt-t', baseUrl: null }
+    device.data = { mode: 'byok', provider: 'deepseek', model: 'deepseek-flash', baseUrl: null }
     wire.calls = []; wire.answer = chat(JSON.stringify(review)); secret.key = 'sk-test-1'
+  })
+
+  it('the phone calls DeepSeek and no other provider', () => {
+    expect(Object.keys(local.ADAPTERS)).toEqual(['deepseek'])
+  })
+
+  it('a question and a review both go out with thinking off and a high output floor', async () => {
+    const ask = { coach_contract: 1, answer: 'Rest tomorrow.' }
+    device.data = { mode: 'byok', provider: 'deepseek', model: '', baseUrl: null, limits: { maxOutputTokens: 16000 } }
+    wire.answer = chat(JSON.stringify(ask))
+    await local.localAsk(state(), 'Should I rest?')
+    let s = await settle()
+    expect(s.lastError).toBeNull()
+    expect(wire.calls[0].url).toBe('https://api.deepseek.com/v1/chat/completions')
+    expect(wire.calls[0].init.headers.authorization).toBe('Bearer sk-test-1')
+    expect(wire.calls[0].body.model).toBe('deepseek-flash')
+    expect(wire.calls[0].body.thinking).toEqual({ type: 'disabled' })
+    expect(wire.calls[0].body.reasoning_effort).toBeUndefined()
+    expect(wire.calls[0].body.max_tokens).toBeGreaterThanOrEqual(65536)
+    expect(JSON.stringify(device.data)).not.toContain('sk-test-1')
+
+    local._resetLocal(); wire.calls = []
+    await saveCoachDevice({ pending: null, provider: 'deepseek', model: 'deepseek-v4-pro' })
+    wire.answer = chat(JSON.stringify(review))
+    await local.localReview(state())
+    s = await settle()
+    expect(s.pending?.kind).toBe('review')
+    expect(wire.calls[0].body.model).toBe('deepseek-v4-pro')
+    expect(wire.calls[0].body.thinking).toEqual({ type: 'disabled' })
+    expect(wire.calls[0].body.reasoning_effort).toBeUndefined()
+    expect(wire.calls[0].body.max_tokens).toBeGreaterThanOrEqual(65536)
+    expect(wire.calls[0].body.response_format).toEqual({ type: 'json_object' })
   })
 
   it('runs a review through the real pipeline and produces a proposal the apply engine accepts', async () => {
@@ -69,9 +101,10 @@ describe('the Coach on a phone with its own key', () => {
     expect(s.pending.changes[0].before).toBe(3)   // computed server-side… which is here
     // What went on the wire: OpenAI's shape, the key as a bearer, the payload in the user turn.
     expect(wire.calls).toHaveLength(1)
-    expect(wire.calls[0].url).toBe('https://api.openai.com/v1/chat/completions')
+    expect(wire.calls[0].url).toBe('https://api.deepseek.com/v1/chat/completions')
     expect(wire.calls[0].init.headers.authorization).toBe('Bearer sk-test-1')
-    expect(wire.calls[0].body.model).toBe('gpt-t')
+    expect(wire.calls[0].body.model).toBe('deepseek-flash')
+    expect(wire.calls[0].body.thinking).toEqual({ type: 'disabled' })
     expect(wire.calls[0].body.messages[1].content).toContain('"userNote":"shoulder"')
     // …and the proposal applies with the ordinary engine.
     const marked = markStale(s.pending, S)
@@ -108,63 +141,27 @@ describe('the Coach on a phone with its own key', () => {
     await local.localReview(state())
     const s = await settle()
     expect(s.lastError.errorClass).toBe('provider')
-    expect(s.lastError.detail).toMatch(/^404 the model "gpt-t" is not available to this key.*: The model `gpt-4o-mini-tts` does not exist/)
+    expect(s.lastError.detail).toMatch(/^404 the model "deepseek-flash" is not available to this key.*: The model `gpt-4o-mini-tts` does not exist/)
     expect(seen.at(-1)).toMatchObject({ kind: 'failed', errorClass: 'provider', detail: expect.stringMatching(/does not exist/) })
     local.setNotifier(null)
   })
 
-  it('a saved model the key cannot use is swapped for one it can, and the swap is kept (#758)', async () => {
+  it('a saved model the key cannot use is swapped for DeepSeek’s default, and the swap is kept', async () => {
     const { HTTP_PROVIDERS } = await import('../../../api/coach/core/providers.js')
-    const next = HTTP_PROVIDERS.gemini.defaultModel
-    device.data = { mode: 'byok', provider: 'gemini', model: 'gemini-2.5-pro', baseUrl: null }
-    wire.answer = (n, url) => url.includes('/models?')
-      ? { status: 200, body: { models: [{ name: 'models/gemini-2.5-pro' }, { name: 'models/' + next }] } }
-      : url.includes('gemini-2.5-pro')
-        ? { status: 404, body: { error: { message: 'This model models/gemini-2.5-pro is no longer available to new users.' } } }
-        : { status: 200, body: { candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(review) }] } }] } }
+    const next = HTTP_PROVIDERS.deepseek.defaultModel
+    device.data = { mode: 'byok', provider: 'deepseek', model: 'deepseek-old', baseUrl: null }
+    wire.answer = (n, url, init) => {
+      const body = init?.body ? JSON.parse(init.body) : null
+      if (url.includes('/models')) return { status: 200, body: { data: [{ id: 'deepseek-old' }, { id: next }] } }
+      if (body && body.model === 'deepseek-old') return { status: 404, body: { error: { message: 'The model deepseek-old does not exist.' } } }
+      return chat(JSON.stringify(review))
+    }
     await local.localReview(state())
     const s = await settle()
     expect(s.lastError).toBeNull()
     expect(s.pending?.kind).toBe('review')
-    expect(wire.calls.at(-1).url).toContain(`/models/${next}:streamGenerateContent`)
+    expect(wire.calls.at(-1).body.model).toBe(next)
     expect((await loadCoachDevice()).model).toBe(next)
-  })
-
-  it('a gateway that refuses with a 400 that names nothing gets a simpler request, and the phone keeps it (#804)', async () => {
-    const GENERIC = 'The request could not be processed. Please check the request parameters.'
-    device.data = { mode: 'byok', provider: 'compatible', model: 'gpt-6.1-sol', baseUrl: 'https://gw.test/v1' }
-    // A reasoning model behind a strict gateway: no temperature, no schema it cannot check.
-    wire.answer = (n, url, init) => {
-      const b = JSON.parse(init.body)
-      return 'temperature' in b || b.response_format?.type === 'json_schema' ? { status: 400, body: { error: { message: GENERIC } } } : chat(JSON.stringify(review))
-    }
-    await local.localReview(state())
-    let s = await settle()
-    expect(s.lastError).toBeNull()
-    expect(s.pending?.kind).toBe('review')
-    const kept = (await loadCoachDevice()).compat
-    expect(kept).toMatchObject({ provider: 'compatible', base: 'https://gw.test/v1', model: 'gpt-6.1-sol' })
-    expect(kept.steps).toEqual(expect.arrayContaining(['json_object', 'temperature']))
-
-    // A fresh launch: the in-memory lesson is gone, the device file still has it.
-    const { rememberCompatProfile } = await import('../../../api/coach/core/adapters/http.js')
-    rememberCompatProfile('compatible', { providerOptions: { compatible: { baseUrl: 'https://gw.test/v1' } } }, 'gpt-6.1-sol', [])
-    local._resetLocal(); wire.calls = []
-    await saveCoachDevice({ pending: null })
-    await local.localReview(state())
-    s = await settle()
-    expect(s.lastError).toBeNull()
-    expect(wire.calls).toHaveLength(1)
-
-    // Nothing works any more: the gateway's own words reach the person holding the phone.
-    local._resetLocal(); wire.calls = []
-    await saveCoachDevice({ pending: null })
-    wire.answer = { status: 400, body: { error: { message: GENERIC } } }
-    await local.localReview(state())
-    s = await settle()
-    expect(s.lastError.errorClass).toBe('provider')
-    expect(s.lastError.detail).toContain(GENERIC)
-    expect((await loadCoachDevice()).compat).toBeNull()
   })
 
   it('a 401 is an auth failure, and never a proposal', async () => {
@@ -197,7 +194,7 @@ describe('the Coach on a phone with its own key', () => {
     expect((await loadCoachDevice()).handle).toBe(first)
   })
 
-  it('refuses without consent, refuses while busy, and stops at the daily cap', async () => {
+  it('refuses without consent and while busy, and a stored daily count does not stop the next run', async () => {
     const noConsent = state(); noConsent.coach.consent = null
     await expect(local.localReview(noConsent)).rejects.toMatchObject({ code: 'consent' })
 
@@ -205,32 +202,19 @@ describe('the Coach on a phone with its own key', () => {
     await expect(local.localReview(state())).rejects.toMatchObject({ code: 'busy' })
     await settle()
 
-    // The cap is keyed by the LOCAL date (todayISO), not the UTC one: in the evening in the
-    // Americas the two differ, and a UTC stamp here read as yesterday's record and let the run through.
-    const cap = COACH_LIMITS.daily.def
-    await saveCoachDevice({ daily: { d: todayISO(), n: cap } })
-    await expect(local.localReview(state())).rejects.toMatchObject({ code: 'cap' })
-    expect((await local.localStatus()).cap).toEqual({ used: cap, limit: cap })
-  })
-
-  it('reads the daily cap from the device dial, and 0 is no limit', async () => {
-    await saveCoachDevice({ limits: { daily: 3 }, daily: { d: todayISO(), n: 3 } })
-    await expect(local.localReview(state())).rejects.toMatchObject({ code: 'cap' })
-    expect((await local.localStatus()).cap).toEqual({ used: 3, limit: 3 })
-
-    // The documented "unlimited": stored runs above any limit no longer refuse the next one.
-    await saveCoachDevice({ limits: { daily: 0 } })
+    await saveCoachDevice({ limits: { daily: 3 }, daily: { d: todayISO(), n: 30 } })
     await local.localReview(state())
     const s = await settle()
     expect(s.pending).toBeTruthy()
-    expect(s.cap).toEqual({ used: 4, limit: 0 })
+    expect(s.cap.limit).toBe(0)
   })
 
-  it('sends the device output-token ceiling on the wire', async () => {
-    await saveCoachDevice({ limits: { maxOutputTokens: 48000 } })
+  it('sends at least the DeepSeek output floor, even when the saved dial is the old 16000', async () => {
+    await saveCoachDevice({ limits: { maxOutputTokens: 16000 } })
     await local.localReview(state())
     await settle()
-    expect(wire.calls[0].body.max_completion_tokens).toBe(48000)
+    expect(wire.calls[0].body.max_tokens).toBeGreaterThanOrEqual(65536)
+    expect(wire.calls[0].body.thinking).toEqual({ type: 'disabled' })
   })
 
   it('clips free text to the device message dial, clamped to the floor', async () => {
@@ -308,24 +292,22 @@ describe('the Coach on a phone with its own key', () => {
   it('disclosure says who pays and where it goes', async () => {
     const d = await local.localDisclosure()
     expect(d.payer).toBe('you')
-    expect(d.host).toBe('api.openai.com')
+    expect(d.host).toBe('api.deepseek.com')
     expect(d.categories).toEqual(['plan', 'training', 'bodyweight', 'profile', 'prefs'])
   })
 })
 
 describe('timeouts on the phone', () => {
-  it('gives a local endpoint the long budget and cloud providers the short one', async () => {
-    const { timeoutFor, TIMEOUT_MS, LOCAL_ENDPOINT_TIMEOUT_MS } = await import('./coach-local.js')
-    expect(timeoutFor('compatible')).toBe(LOCAL_ENDPOINT_TIMEOUT_MS)
-    expect(LOCAL_ENDPOINT_TIMEOUT_MS).toBeGreaterThanOrEqual(20 * 60000)
-    for (const p of ['anthropic', 'openai', 'gemini']) expect(timeoutFor(p)).toBe(TIMEOUT_MS)
+  it('gives DeepSeek the cloud budget', async () => {
+    const { timeoutFor, TIMEOUT_MS } = await import('./coach-local.js')
+    expect(timeoutFor('deepseek')).toBe(TIMEOUT_MS)
   })
 })
 
 describe('Ask the Coach mid-workout, on a phone with its own key', () => {
   beforeEach(async () => {
     _resetCoachDevice(); local._resetLocal()
-    device.data = { mode: 'byok', provider: 'openai', model: 'gpt-t', baseUrl: null }
+    device.data = { mode: 'byok', provider: 'deepseek', model: 'deepseek-flash', baseUrl: null }
     wire.calls = []; secret.key = 'sk-test-1'
   })
 
@@ -346,7 +328,8 @@ describe('Ask the Coach mid-workout, on a phone with its own key', () => {
     expect(sent.messages[0].content).toContain('# Task: adapt the workout in progress')
     expect(sent.messages[1].content).toContain('"focus":{"entry":0')
     expect(sent.messages[1].content).toContain('"userNote":"10 min left"')
-    expect(sent.response_format?.json_schema?.schema?.properties?.changes).toBeTruthy()
+    expect(sent.response_format).toEqual({ type: 'json_object' })
+    expect(sent.thinking).toEqual({ type: 'disabled' })
     // Read: the slot gives back what was waiting before the question.
     await local.localResolve({ accepted: ['a0'] })
     expect((await local.localStatus()).pending).toBeNull()

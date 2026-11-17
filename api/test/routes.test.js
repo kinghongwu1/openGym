@@ -59,15 +59,13 @@ test('the admin card is told which providers hold a key, and switching never dro
     r = await call('GET /api/admin/coach');
     assert.equal(r.status, 200);
     const byId = Object.fromEntries(r.body.providers.map(p => [p.id, p]));
-    assert.equal(byId.compatible.connected, true);
-    assert.equal(byId.anthropic.connected, true);
-    assert.equal(byId.openai.connected, true);
-    assert.equal(byId.gemini.connected, false);
-    assert.equal(byId.compatible.keyOptional, true);
-    assert.equal(byId.compatible.baseUrl, true);
-    assert.equal(byId.claude.setupToken, true);
-    assert.equal(byId.openai.http, true);
-    assert.equal(byId.openai.defaultModel, 'gpt-5.6');
+    assert.deepEqual(Object.keys(byId), ['deepseek'], 'Settings lists DeepSeek and no other provider');
+    assert.equal(byId.deepseek.label, 'DeepSeek API');
+    assert.equal(byId.deepseek.http, true);
+    assert.equal(byId.deepseek.apiKey, true);
+    assert.equal(byId.deepseek.baseUrl, false, 'the DeepSeek base is fixed');
+    assert.equal(byId.deepseek.defaultModel, 'deepseek-flash');
+    assert.equal(byId.deepseek.keyUrl, 'https://platform.deepseek.com/api_keys');
     assert.equal(r.body.auth.state, 'connected');
     assert.equal(r.body.auth.type, 'apikey');
     assert.equal(r.body.auth.account, 'lan');
@@ -97,8 +95,9 @@ test('the admin card is told which providers hold a key, and switching never dro
     assert.equal(r.status, 200);
     r = await call('GET /api/admin/coach');
     assert.equal(r.body.auth.state, 'connected', 'the active provider is still connected');
-    assert.equal(r.body.providers.find(p => p.id === 'openai').connected, false);
-    assert.equal(r.body.providers.find(p => p.id === 'anthropic').connected, true);
+    assert.equal(r.body.providers.find(p => p.id === 'openai'), undefined);
+    assert.equal(cfg.load().auth.openai, undefined, 'the OpenAI key is gone');
+    assert.ok(cfg.load().auth.anthropic, 'the Anthropic key is still stored');
   } finally { mock.close(); }
 });
 

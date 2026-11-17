@@ -37,6 +37,7 @@ describe('a disclosure, as something to ask about', () => {
     expect(consentTarget({ provider: 'openai', host: 'api.openai.com' }, 'device').name).toBe('OpenAI')
     expect(consentTarget({ provider: 'anthropic', host: 'api.anthropic.com' }, 'device').name).toBe('Anthropic')
     expect(consentTarget({ provider: 'gemini', host: 'generativelanguage.googleapis.com' }, 'server').name).toBe('Google Gemini')
+    expect(consentTarget({ provider: 'deepseek', host: 'api.deepseek.com' }, 'device').name).toBe('DeepSeek')
     // The server's runtime providers have no base URL, and go to the same companies.
     expect(consentTarget({ provider: 'claude', host: null, providerLabel: 'Claude (Anthropic)' }, 'server').name).toBe('Anthropic')
   })

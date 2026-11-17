@@ -54,7 +54,7 @@ describe('automatic reviews on a phone with its own key', () => {
   const seen = []
   beforeEach(() => {
     _resetCoachDevice(); local._resetLocal()
-    device.data = { mode: 'byok', provider: 'compatible', model: 'llama', baseUrl: 'https://llm.home.example/v1' }
+    device.data = { mode: 'byok', provider: 'deepseek', model: 'deepseek-flash', baseUrl: null }
     wire.calls = []; wire.answer = chat(JSON.stringify(REVIEW))
     seen.length = 0; local.setNotifier(ev => seen.push(ev))
   })
@@ -69,7 +69,8 @@ describe('automatic reviews on a phone with its own key', () => {
     expect(started?.job?.trigger).toBe('scheduled')
     const s = await settle()
     expect(wire.calls).toHaveLength(1)
-    expect(wire.calls[0].url).toBe('https://llm.home.example/v1/chat/completions')
+    expect(wire.calls[0].url).toBe('https://api.deepseek.com/v1/chat/completions')
+    expect(wire.calls[0].body.thinking).toEqual({ type: 'disabled' })
     expect(s.pending.kind).toBe('review')
     expect(seen.at(-1)).toMatchObject({ kind: 'ready', scheduled: true })
 
@@ -112,11 +113,10 @@ describe('automatic reviews on a phone with its own key', () => {
     expect(wire.calls).toHaveLength(1)
   })
 
-  it('respects the daily runs dial from Advanced, where 0 is no limit (#527)', async () => {
+  it('a stored daily count does not skip a review that is due', async () => {
     const two = [workout('w1', at(12)), workout('w2', at(13))]
-    device.data = { ...device.data, daily: { d: todayISO(), n: 10 } }
-    expect(await local.localScheduled(state({ everyWorkouts: 1 }, two), at(14))).toBeNull()
-    device.data = { ...device.data, limits: { daily: 0 } }; _resetCoachDevice()
+    device.data = { ...device.data, limits: { daily: 1 }, daily: { d: todayISO(), n: 10 } }
+    _resetCoachDevice()
     expect(await local.localScheduled(state({ everyWorkouts: 1 }, two), at(14))).toBeTruthy()
     await settle()
     expect(wire.calls).toHaveLength(1)

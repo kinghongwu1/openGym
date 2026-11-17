@@ -33,7 +33,9 @@ export async function attemptOnce({ adapter, cfg, kind, payload, model, timeoutM
     cfg,
     prompt: split ? parts.user : parts.system + '\n\n---\n\n' + parts.user,
     ...(split ? { system: parts.system, schema: SCHEMAS[parts.task] || null } : {}),
-    model: model || null, timeoutMs, ...invokeOpts
+    // `kind` after invokeOpts so the job wins. A provider may shape the request from it
+    // (DeepSeek leaves thinking off unless the job is writing or revising a plan).
+    model: model || null, timeoutMs, ...invokeOpts, kind
   });
 
   if (r.timedOut) {

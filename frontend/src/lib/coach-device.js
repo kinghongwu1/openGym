@@ -18,14 +18,12 @@ export const COACH_MODES = ['off', 'server', 'byok']
 
 const DEFAULTS = { mode: 'off', provider: null, model: null, baseUrl: null, handle: null, daily: null, pending: null, reviewedAt: null, limits: null, compat: null }
 
-/* The three dials the BYOK setup screen's "Advanced" exposes, with the same ranges the server's
-   admin card clamps to (api/coach/config.js). That file is node-only — it reads ./data and
-   encrypts credentials — so the phone restates the numbers here rather than importing it; the
-   three defaults are what the phone already did before the dials existed. `daily` 0 means no
-   limit, exactly as the instance cap does. */
+/* The dials the BYOK setup screen's "Advanced" exposes. `daily` stays in the device file so an
+   older build's number still parses, but this fork does not enforce it (def 0, and the runner
+   ignores a stored cap). maxOutputTokens starts at the DeepSeek floor so a plan is not cut off. */
 export const COACH_LIMITS = {
-  maxOutputTokens: { def: 16000, min: 1024, max: 65536 },
-  daily: { def: 10, min: 0, max: 200 },
+  maxOutputTokens: { def: 65536, min: 1024, max: 65536 },
+  daily: { def: 0, min: 0, max: 0 },
   maxMessageLen: { def: 1000, min: 200, max: 4000 }
 }
 export const clampCoachLimit = (key, value) => {

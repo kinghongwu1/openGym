@@ -132,8 +132,7 @@ if you want to try it before installing anything.
 
 - An [AI coach](docs/AI_COACH.md) that drafts a week of routines and later suggests changes based on
   what you logged, and answers questions about your training. You approve every change. It runs
-  on your server, or on the phone alone, with your own provider key (Anthropic, OpenAI, Gemini or
-  any OpenAI-compatible endpoint, Ollama included).
+  on your server, or on the phone alone, with your own DeepSeek API key.
 - An [MCP server](mcp/README.md) so an assistant like Claude Desktop can answer questions about your
   training history, and log a workout you describe to it. Local; not part of the Docker build.
 - [Integrations](docs/INTEGRATIONS.md) in one place: Apple Health, Health Connect (Garmin, Fitbit,

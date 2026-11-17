@@ -66,6 +66,7 @@ const PROVIDERS = [
   { id: 'compatible', label: 'OpenAI-compatible', runtime: false, setupToken: false, deviceLogin: false, apiKey: true, http: true, baseUrl: true, keyOptional: true, keyPlaceholder: null, defaultModel: null, connected: false },
   { id: 'claude', label: 'Claude Code', runtime: true, setupToken: true, deviceLogin: false, apiKey: false, http: false, baseUrl: false, keyOptional: false, keyPlaceholder: null, defaultModel: null, connected: false },
   { id: 'fixture', label: 'Built-in fixture', runtime: false, setupToken: false, deviceLogin: false, apiKey: false, http: false, baseUrl: false, keyOptional: false, keyPlaceholder: null, defaultModel: null, connected: false },
+  { id: 'deepseek', label: 'DeepSeek API', runtime: false, setupToken: false, deviceLogin: false, apiKey: true, http: true, baseUrl: false, keyOptional: false, keyPlaceholder: 'sk-…', defaultModel: 'deepseek-flash', keyUrl: 'https://platform.deepseek.com/api_keys', connected: true },
 ]
 
 const status = (over = {}) => ({
@@ -281,22 +282,24 @@ describe('AdminCoach — removing the stored credential (irreversible: the key i
 })
 
 describe('AdminCoach — switching provider', () => {
-  it('posts the chip\'s provider id and drops the previous test result with it', async () => {
+  it('posts DeepSeek and drops the previous test result with it', async () => {
     await mount()
     await tap(btn('Test the Coach'))
     expect(host.textContent).toContain('Passed')
 
-    mocks.routes['/api/admin/coach'] = status({ provider: 'openai', model: 'gpt-4o' })
-    await tap(chip('OpenAI-compatible'))
-    expect(sent('/api/admin/coach/config').at(-1).body).toEqual({ provider: 'compatible' })
+    mocks.routes['/api/admin/coach'] = status({ provider: 'deepseek', model: 'deepseek-flash' })
+    await tap(chip('DeepSeek API'))
+    expect(sent('/api/admin/coach/config').at(-1).body).toEqual({ provider: 'deepseek' })
     // A "Passed" banner from the provider you just switched away from would be a lie.
     expect(host.querySelector('.adm-result')).toBeFalsy()
   })
 
-  it('marks the providers that already hold a key, so switching is visibly not a reset', async () => {
+  it('shows DeepSeek only, and marks a saved key', async () => {
     await mount()
-    expect(chip('Claude').textContent).toContain('key saved')
-    expect(chip('OpenAI').textContent).not.toContain('key saved')
+    expect(chip('DeepSeek API').textContent).toContain('key saved')
+    expect(chip('Claude')).toBeUndefined()
+    expect(chip('OpenAI')).toBeUndefined()
+    expect(chip('OpenAI-compatible')).toBeUndefined()
   })
 })
 
@@ -471,48 +474,12 @@ describe('AdminCoach — model', () => {
   })
 })
 
-describe('AdminCoach — daily caps (what bounds the spend on the operator\'s account)', () => {
-  const capFields = () => [...host.querySelectorAll('input.num')]
-
-  it('changing the per-user cap sends BOTH caps, so the other one is not dropped by the merge', async () => {
+describe('AdminCoach — no daily cap', () => {
+  it('does not offer a per-day Coach limit', async () => {
     await mount()
-    await blurWith(capFields()[0], '12')
-    expect(sent('/api/admin/coach/config')).toEqual([
-      { path: '/api/admin/coach/config', method: 'POST', body: { caps: { perProfileDaily: 12, instanceDaily: 50 } } }
-    ])
-  })
-
-  it('changing the instance cap likewise carries the per-user one through untouched', async () => {
-    await mount()
-    await blurWith(capFields()[1], '400')
-    expect(sent('/api/admin/coach/config')[0].body).toEqual({ caps: { perProfileDaily: 5, instanceDaily: 400 } })
-  })
-
-  it('an unchanged cap writes nothing', async () => {
-    await mount()
-    await blurWith(capFields()[0], '5')
-    expect(sent('/api/admin/coach/config')).toHaveLength(0)
-  })
-
-  // `0 means no limit` is what the card says one line above these boxes, and a number input
-  // hands back "" for anything it cannot parse. Until 2026-09-22 emptying the box to retype and
-  // clicking away wrote 0: the daily cap on the operator's API key, gone in one blur with no
-  // confirmation and no toast. An empty box is no change now, the stored value comes back into
-  // it, and removing the cap takes typing an explicit 0.
-  it('emptying a cap box writes nothing and puts the stored value back', async () => {
-    await mount()
-    await blurWith(capFields()[0], '')
-    expect(sent('/api/admin/coach/config')).toHaveLength(0)
-    expect(capFields()[0].value).toBe('5')
-    await blurWith(capFields()[1], '   ')
-    expect(sent('/api/admin/coach/config')).toHaveLength(0)
-    expect(capFields()[1].value).toBe('50')
-  })
-
-  it('an explicit 0 still removes the cap, because that is what the hint promises', async () => {
-    await mount()
-    await blurWith(capFields()[0], '0')
-    expect(sent('/api/admin/coach/config')[0].body).toEqual({ caps: { perProfileDaily: 0, instanceDaily: 50 } })
+    expect(host.textContent).toContain('There is no daily cap')
+    expect(host.textContent).not.toContain('Per user, per day')
+    expect(host.textContent).not.toContain('Whole instance, per day')
   })
 
   it('the community-medians switch is a separate write and does not carry the caps with it', async () => {

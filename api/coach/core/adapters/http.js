@@ -347,7 +347,9 @@ export function httpAdapter(spec) {
       const streamKey = () => `${id} ${base} ${chosen}`;
       let useStream = !!spec.stream && opts.stream !== false && !noStream.has(streamKey());
       const build = () => {
-        const b = spec.body({ model: chosen, prompt, system: system || null, schema: schema || null, maxTokens, base, ...(opts.web ? { web: true } : {}) });
+        // `kind` is the Coach job. Specs that do not care ignore it; DeepSeek uses it so a
+        // short question is not sent with thinking on.
+        const b = spec.body({ model: chosen, prompt, system: system || null, schema: schema || null, maxTokens, base, kind: opts.kind || null, ...(opts.web ? { web: true } : {}) });
         return useStream ? spec.stream.body(b) : b;
       };
       // Drops the stream for this endpoint and model, remembered; true when that changed anything.

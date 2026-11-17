@@ -919,6 +919,7 @@ test('key shapes point at their provider, and model names get a rough price tier
   const { providerOfKey, priceTier } = await import('../coach/core/providers.js');
   assert.equal(providerOfKey('sk-ant-api03-' + 'a'.repeat(40)), 'anthropic');
   assert.equal(providerOfKey('sk-proj-' + 'b'.repeat(40)), 'openai');
+  assert.equal(providerOfKey('sk-' + 'ab'.repeat(16)), 'deepseek');
   assert.equal(providerOfKey('sk-or-v1-' + 'c'.repeat(40)), 'openrouter');
   assert.equal(providerOfKey('AIza' + 'd'.repeat(35)), 'gemini');
   assert.equal(providerOfKey('hello'), null);

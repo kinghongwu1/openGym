@@ -27,7 +27,9 @@ export const HTTP_PROVIDERS = Object.freeze({
     defaultModel: 'gpt-5.6',
     keyPlaceholder: 'sk-…',
     keyUrl: 'https://platform.openai.com/api-keys',
-    keyPattern: /^sk-(?!ant-|or-)[A-Za-z0-9_-]{20,}$/,
+    // Not Anthropic (`sk-ant-`), not OpenRouter (`sk-or-`), and not DeepSeek's published
+    // 32-hex shape, which is its own provider. Anything else that starts with `sk-` is OpenAI.
+    keyPattern: /^sk-(?!ant-|or-)(?![0-9a-fA-F]{32}$)[A-Za-z0-9_-]{20,}$/,
     web: true
   }),
   gemini: Object.freeze({
@@ -49,6 +51,21 @@ export const HTTP_PROVIDERS = Object.freeze({
     defaultModel: 'MiniMax-M3.1-Flash',
     keyPlaceholder: 'sk-…',
     keyUrl: 'https://platform.minimax.io/user-center/basic-information/interface-key'
+  }),
+  // Chat Completions at api.deepseek.com. `defaultModel` is only the starting point: the
+  // picker lists whatever GET /models returns, because DeepSeek retires names (deepseek-chat
+  // and deepseek-reasoner are already gone). Thinking is the API's own default, so the adapter
+  // turns it off except when a job is writing or revising a plan (adapters/deepseek.js).
+  deepseek: Object.freeze({
+    label: 'DeepSeek API', runtime: 'HTTPS', http: true,
+    apiKeyEnv: 'DEEPSEEK_API_KEY', oauthEnv: null,
+    defaultBase: 'https://api.deepseek.com',
+    defaultModel: 'deepseek-flash',
+    keyPlaceholder: 'sk-…',
+    keyUrl: 'https://platform.deepseek.com/api_keys',
+    // The shape published for scanners: `sk-` and 32 hex digits. A longer `sk-` key is also
+    // OpenAI's shape; the setup screen keeps it on this chip when DeepSeek was already picked.
+    keyPattern: /^sk-[0-9a-fA-F]{32}$/
   }),
   // One sign-in for Claude, GPT, Gemini and the rest, through OpenRouter's own OAuth PKCE flow:
   // the person approves openGym on openrouter.ai and gets back an API key of their own, billed to
@@ -78,6 +95,10 @@ export const HTTP_PROVIDERS = Object.freeze({
 });
 
 export const HTTP_PROVIDER_IDS = Object.freeze(Object.keys(HTTP_PROVIDERS));
+
+/* What Settings and the phone's own-key screen may offer. The other rows stay in
+ * HTTP_PROVIDERS so the adapters and the engine tests can still load; they are not choices. */
+export const OFFERED_PROVIDER_IDS = Object.freeze(['deepseek']);
 
 /** The provider a pasted key belongs to, by its shape, or null. Only a hint for the setup screen:
  *  the Test button is what proves a key. */

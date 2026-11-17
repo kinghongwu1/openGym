@@ -66,7 +66,8 @@ export const PROVIDERS = {
     label: 'Codex (OpenAI)', runtime: 'Codex CLI',
     apiKeyEnv: 'CODEX_API_KEY', oauthEnv: null, credentialHomeEnv: 'CODEX_HOME'
   },
-  // The plain-HTTPS providers — Anthropic, OpenAI, Gemini and any OpenAI-compatible endpoint.
+  // The plain-HTTPS providers — Anthropic, OpenAI, Gemini, MiniMax, DeepSeek and any
+  // OpenAI-compatible endpoint.
   // Described once in core/providers.js so the phone's picker and this table cannot disagree.
   // They spawn nothing and need no runtime in the image: the default api image runs them.
   ...HTTP_PROVIDERS,
@@ -88,7 +89,7 @@ const DEFAULTS = {
   models: {},                                        // { [provider]: model id }
   providerOptions: {},                               // { [provider]: { baseUrl } }
   boundUid: {},                                      // instance mode: { [provider]: the profile its credential bound to }
-  caps: { perProfileDaily: 10, instanceDaily: 0 },   // 0 = unlimited
+  caps: { perProfileDaily: 0, instanceDaily: 0 },   // 0 = unlimited; this fork does not cap the day
   daily: null,                                       // { date, count }: jobs enqueued today across every profile
   // Anonymous medians across profiles that opt in ("compare with others"). Off by default: it
   // is the one feature where one person's numbers feed into what another person sees.

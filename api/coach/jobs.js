@@ -126,10 +126,11 @@ function bumpDaily(uid) {
   return daily.count;
 }
 export function capState(uid) {
-  const caps = cfgStore.load().caps || {};
   const rec = readUser(uid);
   const used = rec.daily?.date === todayISO() ? rec.daily.count : 0;
-  return { used, limit: caps.perProfileDaily || 0 };
+  // This fork does not stop the Coach after N runs in a day, even if an older
+  // coach.json still has a per-profile or instance cap stored.
+  return { used, limit: 0 };
 }
 // The instance-wide count is kept the same way in coach.json, not read off the job log: the
 // log keeps its last hundred entries, and a count that stops at a hundred is not a cap.
@@ -137,10 +138,6 @@ function bumpInstanceDaily() {
   const cur = cfgStore.load().daily;
   const d = todayISO();
   cfgStore.save({ daily: cur?.date === d ? { date: d, count: cur.count + 1 } : { date: d, count: 1 } });
-}
-function instanceUsedToday() {
-  const daily = cfgStore.load().daily;
-  return daily?.date === todayISO() ? daily.count : 0;
 }
 
 /* ---------- status ---------- */
@@ -229,11 +226,7 @@ export function enqueue(uid, opts) {
   const refusal = privilegeRefusal(adapterFor(cfgStore.load().provider));
   if (refusal) throw new CoachError('unprivileged', refusal);
 
-  // The caps, before the bind for the same reason: a job refused for the day spends nothing.
-  const caps = cfgStore.load().caps || {};
-  const { used, limit } = capState(uid);
-  if (limit > 0 && used >= limit) throw new CoachError('cap', 'daily limit reached');
-  if (caps.instanceDaily > 0 && instanceUsedToday() >= caps.instanceDaily) throw new CoachError('cap', 'this instance has reached its daily limit');
+  // No daily cap. A stored per-profile or instance number is ignored (capState).
 
   // Spending is what binds: a personal credential (setup token, OAuth) belongs to the first
   // profile that runs a job on it from here on; an API key binds to nobody and is shared.

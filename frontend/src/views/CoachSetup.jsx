@@ -2,8 +2,8 @@
 //
 // Two answers. "Use my self-hosted openGym" hands the whole thing to the paired server — the
 // same Coach the web app has, with whatever provider its admin configured; the phone only has
-// to be paired. "Bring my own API key" runs the pipeline on the phone against Anthropic,
-// OpenAI, Gemini or an OpenAI-compatible endpoint, with a key that stays in secure storage.
+// to be paired. "Bring my own API key" runs the pipeline on the phone against DeepSeek,
+// with a key that stays in secure storage.
 //
 // The promise this screen keeps: nothing AI-shaped is loaded until a mode is chosen. Its only
 // imports from the Coach core are the provider table and the five category names — the
@@ -18,7 +18,7 @@ import { MOBILE } from '../lib/mobile.js'
 import { CATEGORY_TEXT } from '../lib/coach.js'
 import { getApiKey, setApiKey, clearApiKey } from '../lib/coach-secrets.js'
 import { coachLimits, clampCoachLimit, COACH_LIMITS } from '../lib/coach-device.js'
-import { HTTP_PROVIDERS, HTTP_PROVIDER_IDS, baseUrlFor, validateBaseUrl, phoneMayCall, providerOfKey, priceTier } from '../../../api/coach/core/providers.js'
+import { HTTP_PROVIDERS, OFFERED_PROVIDER_IDS, baseUrlFor, validateBaseUrl, phoneMayCall, priceTier } from '../../../api/coach/core/providers.js'
 import { DATA_CATEGORIES } from '../../../api/coach/core/categories.js'
 import { ConnectSheet } from './MobileOnboarding.jsx'
 import { AiConsentSection } from '../components/CoachConsentSheet.jsx'
@@ -37,15 +37,7 @@ const STEPS = () => [t('Loading the exercise catalogue…'), t('Checking the end
 // data from ever going over the internet unencrypted. It runs again before every call
 // (coach-local.js). The web app has no such screen: in a browser the Coach always runs on the
 // server, which reaches http:// on its own network (an https page could not call http:// itself).
-// The big cards: the ways most people get going. `local` is the compatible endpoint, found on the
-// network; MiniMax and a hand-typed compatible endpoint stay one tap further, as chips.
-const CARDS = [
-  { id: 'openrouter', provider: 'openrouter', icon: 'sparkles', tint: 'var(--indigo)', line: () => t('One sign-in for Claude, GPT, Gemini and more') },
-  { id: 'anthropic', provider: 'anthropic', icon: 'key', tint: 'var(--orange)', line: () => t('Claude, with an API key') },
-  { id: 'openai', provider: 'openai', icon: 'key', tint: 'var(--green)', line: () => t('GPT, with an API key') },
-  { id: 'gemini', provider: 'gemini', icon: 'key', tint: 'var(--blue)', line: () => t('Gemini, with a free tier to start') },
-  { id: 'local', provider: 'compatible', icon: 'house', tint: 'var(--teal)', title: () => t('On my network'), line: () => t('Ollama or LM Studio at home, nothing leaves your Wi-Fi') }
-]
+// This fork offers one provider. The chip is DeepSeek; there is no other card.
 const TIER = { free: () => t('free'), low: () => '$', mid: () => '$$', high: () => '$$$' }
 const tierOf = (m, prices) => { const k = priceTier(m, prices && prices[m]); return k ? TIER[k]() : '' }
 
@@ -63,15 +55,14 @@ export default function CoachSetup() {
   const openSheet = useUI(s => s.openSheet)
 
   const [choice, setChoice] = useState(null)              // 'server' | 'byok' | null
-  const [provider, setProvider] = useState(coachLocal?.provider || 'anthropic')
+  const [provider, setProvider] = useState('deepseek')
   const [baseUrl, setBaseUrl] = useState(coachLocal?.baseUrl || '')
   const [model, setModel] = useState(coachLocal?.model || '')
   const [key, setKey] = useState('')
   const [hasKey, setHasKey] = useState(false)
   const [models, setModels] = useState(null)
   const [prices, setPrices] = useState(null)
-  const cardFor = id => (id === 'compatible' ? 'local' : CARDS.some(c => c.id === id) ? id : null)
-  const [card, setCard] = useState(cardFor(coachLocal?.provider || 'anthropic'))
+  const [card, setCard] = useState(null)
   const [found, setFound] = useState(null)               // local discovery: null idle, [] none, [...]
   const [orSession, setOrSession] = useState(null)       // a running OpenRouter sign-in, for the paste fallback
   const [orCode, setOrCode] = useState('')
@@ -160,20 +151,12 @@ export default function CoachSetup() {
     } finally { setBusy(false) }
   }
 
-  // A pasted key that has another provider's shape switches to that provider, said out loud.
+  // A whole key pasted in one go is tested straight away. The provider stays DeepSeek:
+  // a key that also looks like some other vendor's is still used here.
   const onKey = v => {
     const before = key
     setKey(v)
-    const other = providerOfKey(v)
-    if (other && other !== provider && HTTP_PROVIDERS[other]) {
-      setProvider(other)
-      setCard(cardFor(other))
-      toast(t('That looks like a {0} key, so I switched to {0}.', HTTP_PROVIDERS[other].label))
-      return
-    }
-    // A whole key pasted in one go, of this provider's shape: test it straight away, so the
-    // one-minute Gemini flow ends on "It works!" without another tap.
-    if (other === provider && v.trim().length >= 30 && v.length - before.length > 20 && !busy) prepare(v)
+    if (v.trim().length >= 30 && v.length - before.length > 20 && !busy) prepare(v)
   }
   const pasteKey = async () => {
     let v = ''
@@ -245,11 +228,6 @@ export default function CoachSetup() {
       <div style={{ flex: 1, marginInlineStart: 12 }}><h1>{t('AI Coach')}</h1></div>
     </div>
 
-    <Section footer={t('No API key needed: Claude, ChatGPT or Gemini come to openGym as a connector, on the plan you already pay for.')}>
-      <Row icon="chat" iconTint="var(--acc)" title={t('Use your Claude, ChatGPT or Gemini plan')} subtitle={t('Add openGym to the assistant app you already pay for')}
-        accessory="chevron" onClick={() => nav('/assistants')} />
-    </Section>
-
     <Section title={t('How should the Coach run?')} footer={current}>
       <Row icon="rocket" iconTint="var(--indigo)" title={t('Use my self-hosted openGym')}
         subtitle={user ? (serverHasCoach ? t('Your server runs the Coach with whatever provider its admin set up. Nothing new leaves this phone beyond what already syncs.') : config == null ? t('Loading…') : t('Your server has no Coach enabled. Ask its admin, or bring your own key below.')) : t('Connect to my server')}
@@ -265,15 +243,8 @@ export default function CoachSetup() {
 
     {choice === 'byok' && <>
       <Section title={t('Pick your AI')}>
-        <div className="cs-cards">
-          {CARDS.map(c => <button key={c.id} type="button" className={'cs-card' + (card === c.id ? ' on' : '')} disabled={busy} aria-pressed={card === c.id} onClick={() => pick(c)}>
-            <span className="cs-card-i" style={{ color: c.tint }}><Icon name={c.icon} /></span>
-            <span className="cs-card-t">{c.title ? c.title() : HTTP_PROVIDERS[c.provider].label}</span>
-            <span className="cs-card-s">{c.line()}</span>
-          </button>)}
-        </div>
         <div className="row" style={{ flexWrap: 'wrap', gap: 7, padding: '4px 12px 10px' }}>
-          {HTTP_PROVIDER_IDS.filter(id => !CARDS.some(c => c.provider === id && c.id !== 'local')).map(id => <button key={id} className={'chip' + (id === provider && !card ? ' on' : '')} disabled={busy}
+          {OFFERED_PROVIDER_IDS.map(id => <button key={id} className={'chip' + (id === provider ? ' on' : '')} disabled={busy}
             onClick={() => { setCard(null); setProvider(id); setFound(null) }}>{HTTP_PROVIDERS[id].label}</button>)}
         </div>
       </Section>
@@ -353,9 +324,6 @@ export default function CoachSetup() {
         <LimitRow label={t('Max output tokens')} hint={t('The ceiling on one answer. Reasoning models count its hidden thinking against it, so raise it if a plan is cut off.')}
           value={limits.maxOutputTokens} min={COACH_LIMITS.maxOutputTokens.min} max={COACH_LIMITS.maxOutputTokens.max}
           onChange={v => editLimit('maxOutputTokens', v)} onCommit={() => commitLimit('maxOutputTokens')} />
-        <LimitRow label={t('Daily runs')} hint={t('Every Coach run is one request on your provider account. 0 means no limit.')}
-          value={limits.daily} min={COACH_LIMITS.daily.min} max={COACH_LIMITS.daily.max}
-          onChange={v => editLimit('daily', v)} onCommit={() => commitLimit('daily')} />
         <LimitRow label={t('Max message length')} hint={t('How long a message, refinement or review note can be.')}
           value={limits.maxMessageLen} min={COACH_LIMITS.maxMessageLen.min} max={COACH_LIMITS.maxMessageLen.max}
           onChange={v => editLimit('maxMessageLen', v)} onCommit={() => commitLimit('maxMessageLen')} />

@@ -162,27 +162,25 @@ describe('CoachSetup — "use my self-hosted openGym"', () => {
 })
 
 describe('CoachSetup — bringing your own key', () => {
-  it('offers every provider the shared table lists, as a big card or a chip, Anthropic picked', async () => {
+  it('offers DeepSeek and no other provider', async () => {
     await mount(); await openByok()
-    const shown = [...all('.cs-card-t').map(c => c.textContent), ...all('.chip').map(c => c.textContent)]
-    for (const p of Object.values(HTTP_PROVIDERS)) expect(shown).toContain(p.label)
-    expect(shown).toContain('On my network')
-    expect(chip('Anthropic API').classList.contains('on')).toBe(true)
+    const shown = all('.chip').map(c => c.textContent)
+    expect(shown).toEqual(['DeepSeek API'])
+    expect(chip('DeepSeek API').classList.contains('on')).toBe(true)
+    expect(host.textContent).not.toContain('Anthropic API')
+    expect(host.textContent).not.toContain('OpenAI API')
+    expect(host.textContent).not.toContain('OpenRouter')
+    expect(host.textContent).not.toContain('Daily runs')
+    expect(rowTitled('Get a key from DeepSeek API')).toBeTruthy()
   })
 
-  it('a pasted key of another provider switches to it and says so', async () => {
+  it('a pasted key stays on DeepSeek and is tested there', async () => {
     await mount(); await openByok()
-    await typeIn(field('password'), 'sk-or-v1-' + 'a'.repeat(40))
-    expect(chip('OpenRouter').classList.contains('on')).toBe(true)
-    expect(mocks.toast).toHaveBeenCalledWith(expect.stringMatching(/OpenRouter key/))
-  })
-
-  it('OpenRouter offers its sign-in and a link to make a key', async () => {
-    await mount(); await openByok()
-    await click(chip('OpenRouter'))
-    expect(btn('Sign in with OpenRouter')).toBeTruthy()
-    expect(btn('Paste a code instead')).toBeTruthy()
-    expect(rowTitled('Get a key from OpenRouter')).toBeTruthy()
+    await typeIn(field('password'), 'sk-' + 'B'.repeat(40))
+    await settle()
+    expect(chip('DeepSeek API').classList.contains('on')).toBe(true)
+    expect(mocks.toast).not.toHaveBeenCalled()
+    expect(localModels).toHaveBeenCalledWith({ provider: 'deepseek', baseUrl: null }, 'sk-' + 'B'.repeat(40))
   })
 
   it('names every category the payload is built from, in that order, and where it would go', async () => {
@@ -190,19 +188,13 @@ describe('CoachSetup — bringing your own key', () => {
     const section = all('.sect').find(s => s.querySelector('.sect-t')?.textContent === 'What leaves this phone')
     expect([...section.querySelectorAll('.lrow-t')].map(t => t.textContent))
       .toEqual(DATA_CATEGORIES.map(k => CATEGORY_TEXT[k]()[0]))
-    expect(host.textContent).toContain('Each request goes straight to api.anthropic.com with your key')
+    expect(host.textContent).toContain('Each request goes straight to api.deepseek.com with your key')
   })
 
-  it('shows an endpoint field only for the OpenAI-compatible provider', async () => {
+  it('has no endpoint field: DeepSeek’s base URL is fixed', async () => {
     await mount(); await openByok()
     expect(host.textContent).not.toContain('Endpoint')
-    await click(chip('OpenAI-compatible endpoint'))
-    expect(host.textContent).toContain('Endpoint')
-    expect(field('text').getAttribute('placeholder')).toBe('https://ollama.example.com')
-    // With nothing typed there is no host to name, so the line falls back to the provider.
-    expect(host.textContent).toContain('Each request goes straight to OpenAI-compatible endpoint with your key')
-    typeIn(field('text'), 'https://ollama.lan:11434')
-    expect(host.textContent).toContain('Each request goes straight to ollama.lan:11434 with your key')
+    expect(host.textContent).toContain('Each request goes straight to api.deepseek.com with your key')
   })
 
   it('refuses to reach out with no key, and never loads the pipeline to find out', async () => {
@@ -218,7 +210,7 @@ describe('CoachSetup — bringing your own key', () => {
     await mount(); await settle(); await openByok()
     expect(field('password').getAttribute('placeholder')).toContain('(saved)')
     await click(btn('Test it')); await settle()
-    expect(localModels).toHaveBeenCalledWith({ provider: 'anthropic', baseUrl: null }, 'sk-saved')
+    expect(localModels).toHaveBeenCalledWith({ provider: 'deepseek', baseUrl: null }, 'sk-saved')
   })
 
   it('a typed key wins over the saved one and is never read back out of storage', async () => {
@@ -226,49 +218,7 @@ describe('CoachSetup — bringing your own key', () => {
     await mount(); await settle(); await openByok()
     typeIn(field('password'), '  sk-typed  ')
     await click(btn('Test it')); await settle()
-    expect(localModels).toHaveBeenCalledWith({ provider: 'anthropic', baseUrl: null }, 'sk-typed')
-  })
-
-  it('the OpenAI-compatible endpoint needs no key at all', async () => {
-    await mount(); await openByok()
-    await click(chip('OpenAI-compatible endpoint'))
-    typeIn(field('text'), 'https://ollama.lan:11434/')
-    await click(btn('Test it')); await settle()
-    expect(mocks.toast).not.toHaveBeenCalled()
-    expect(localModels).toHaveBeenCalledWith({ provider: 'compatible', baseUrl: 'https://ollama.lan:11434' }, null)
-  })
-
-  it('turns down a base URL that is not one, before anything is loaded', async () => {
-    await mount(); await openByok()
-    await click(chip('OpenAI-compatible endpoint'))
-    const cases = [
-      ['ollama.lan', 'not a valid URL'],
-      // host:port with no scheme parses as a scheme of its own ("ollama.lan:"), so it lands on
-      // the protocol message rather than the parse one — worth knowing, the placeholder is a URL.
-      ['ollama.lan:11434', 'only http:// and https:// endpoints are supported'],
-      ['ftp://ollama.lan', 'only http:// and https:// endpoints are supported'],
-      ['http://me:pw@ollama.lan', 'put the key in the credential field, not in the URL'],
-      ['http://ollama.lan?k=1', 'a base URL has no query string'],
-    ]
-    for (const [url, error] of cases) {
-      mocks.toast.mockClear()
-      typeIn(field('text'), url)
-      await click(btn('Test it')); await settle()
-      expect(mocks.toast, url).toHaveBeenCalledWith(error)
-    }
-    expect(localModels).not.toHaveBeenCalled()
-  })
-
-  it('an empty compatible endpoint is refused before anything is loaded', async () => {
-    // validateBaseUrl('') is {ok:true,value:null} on purpose: for a provider with a fixed
-    // endpoint, empty means the default. `compatible` has none, so the screen refuses it here
-    // rather than sending "List models" out with nowhere to go and failing at the adapter.
-    await mount(); await openByok()
-    await click(chip('OpenAI-compatible endpoint'))
-    await click(btn('Test it')); await settle()
-    expect(mocks.toast).toHaveBeenCalledWith('Enter the endpoint URL')
-    expect(localModels).not.toHaveBeenCalled()
-    expect(host.querySelector('.card')).toBe(null)          // no progress steps started
+    expect(localModels).toHaveBeenCalledWith({ provider: 'deepseek', baseUrl: null }, 'sk-typed')
   })
 })
 
@@ -279,15 +229,15 @@ describe('CoachSetup — listing the models', () => {
   }
 
   it('walks the three steps, lists what the endpoint serves and pre-picks the default', async () => {
-    vi.mocked(localModels).mockResolvedValue({ ok: true, models: ['claude-opus-5', 'claude-haiku-4'] })
+    vi.mocked(localModels).mockResolvedValue({ ok: true, models: ['deepseek-flash', 'deepseek-v4-pro'] })
     await withKey()
     await click(btn('Test it')); await settle()
 
     expect(all('.card .small').map(s => s.textContent))
       .toEqual(['Loading the exercise catalogue…', 'Checking the endpoint…', 'Ready'])
     const select = host.querySelector('select')
-    expect([...select.options].map(o => o.value)).toEqual(['', 'claude-opus-5', 'claude-haiku-4'])
-    expect(select.value).toBe('claude-opus-5')
+    expect([...select.options].map(o => o.value)).toEqual(['', 'deepseek-flash', 'deepseek-v4-pro'])
+    expect(select.value).toBe('deepseek-flash')
     expect(btn('Save and use the Coach')).toBeTruthy()
     expect(btn('Test it')).toBeTruthy()                 // still there, to re-list
   })
@@ -297,7 +247,7 @@ describe('CoachSetup — listing the models', () => {
     await withKey()
     await click(btn('Test it')); await settle()
     expect(host.querySelector('select').value).toBe('')
-    expect(host.querySelector('select option').textContent).toBe('(claude-opus-5)')
+    expect(host.querySelector('select option').textContent).toBe('(deepseek-flash)')
   })
 
   it('an endpoint that will not answer clears the progress and says why', async () => {
@@ -325,99 +275,45 @@ describe('CoachSetup — listing the models', () => {
     expect(mocks.toast).toHaveBeenCalledWith('Could not connect')
   })
 
-  it('switching provider throws the list away — a model name is not portable', async () => {
-    vi.mocked(localModels).mockResolvedValue({ ok: true, models: ['claude-opus-5'] })
+  it('re-testing stays on DeepSeek', async () => {
+    vi.mocked(localModels).mockResolvedValue({ ok: true, models: [HTTP_PROVIDERS.deepseek.defaultModel] })
     await withKey()
     await click(btn('Test it')); await settle()
-    expect(host.querySelector('select')).toBeTruthy()
-
-    await click(chip('Google Gemini'))
-    expect(host.querySelector('select')).toBe(null)
-    expect(btn('Save and use the Coach')).toBeUndefined()
-
-    vi.mocked(localModels).mockResolvedValue({ ok: true, models: [HTTP_PROVIDERS.gemini.defaultModel] })
-    await click(btn('Test it')); await settle()
-    expect(localModels).toHaveBeenLastCalledWith({ provider: 'gemini', baseUrl: null }, 'sk-1')
-    expect(host.querySelector('select').value).toBe(HTTP_PROVIDERS.gemini.defaultModel)
+    expect(localModels).toHaveBeenLastCalledWith({ provider: 'deepseek', baseUrl: null }, 'sk-1')
+    expect(host.querySelector('select').value).toBe(HTTP_PROVIDERS.deepseek.defaultModel)
   })
 })
 
 describe('CoachSetup — saving', () => {
-  const listed = async (provider, models, { key = 'sk-1', baseUrl } = {}) => {
+  const listed = async (models, { key = 'sk-1' } = {}) => {
     await mount(); await openByok()
-    if (provider) await click(chip(HTTP_PROVIDERS[provider].label))
-    if (baseUrl != null) typeIn(field('text'), baseUrl)
     if (key) typeIn(field('password'), key)
     vi.mocked(localModels).mockResolvedValue({ ok: true, models })
     await click(btn('Test it')); await settle()
   }
 
   it('writes the mode, the provider and the chosen model, then stores the key and leaves', async () => {
-    await listed(null, ['claude-opus-5'])
+    await listed(['deepseek-flash', 'deepseek-v4-pro'])
     await click(btn('Save and use the Coach')); await settle()
-    expect(mocks.setCoachLocal).toHaveBeenCalledWith({ mode: 'byok', provider: 'anthropic', model: 'claude-opus-5', baseUrl: null })
+    expect(mocks.setCoachLocal).toHaveBeenCalledWith({ mode: 'byok', provider: 'deepseek', model: 'deepseek-flash', baseUrl: null })
     expect(setApiKey).toHaveBeenCalledWith('sk-1')
     expect(mocks.toast).toHaveBeenCalledWith('The Coach is on')
     expect(mocks.nav).toHaveBeenCalledWith('/coach')
   })
 
-  it('normalises the endpoint it saves for a compatible provider, and saves the model you pick', async () => {
-    await listed('compatible', ['qwen3-27b', 'llama-3.3'], { key: null, baseUrl: 'https://ollama.lan:11434//' })
-    pickModel('llama-3.3')
-    await click(btn('Save and use the Coach')); await settle()
-    expect(mocks.setCoachLocal).toHaveBeenCalledWith({
-      mode: 'byok', provider: 'compatible', model: 'llama-3.3', baseUrl: 'https://ollama.lan:11434'
-    })
-    expect(setApiKey).not.toHaveBeenCalled()
-  })
-
   it('does not touch the secure store when the key field was left alone', async () => {
     vi.mocked(getApiKey).mockResolvedValue('sk-saved')
     await mount(); await settle(); await openByok()
-    vi.mocked(localModels).mockResolvedValue({ ok: true, models: ['claude-opus-5'] })
+    vi.mocked(localModels).mockResolvedValue({ ok: true, models: ['deepseek-flash'] })
     await click(btn('Test it')); await settle()
     await click(btn('Save and use the Coach')); await settle()
     expect(setApiKey).not.toHaveBeenCalled()
     expect(mocks.nav).toHaveBeenCalledWith('/coach')
   })
 
-  it('refuses to save a provider with no model picked and no default to fall back on', async () => {
-    await listed('compatible', [], { key: null, baseUrl: 'https://ollama.lan:11434' })
-    await click(btn('Save and use the Coach')); await settle()
-    expect(mocks.toast).toHaveBeenCalledWith('Pick a model')
-    expect(mocks.setCoachLocal).not.toHaveBeenCalled()
-    expect(mocks.nav).not.toHaveBeenCalled()
-  })
-
-  // DEFECT (fixed in CoachSetup.jsx, see the report): "List models" validates the endpoint and
-  // "Save" did not. Editing the field after a successful listing — the one order in which the
-  // two disagree — saved `baseUrl: null`, said "The Coach is on" and left for the conversation
-  // with the phone pointed at nothing.
-  it('refuses on Save the same endpoint it refused on List models', async () => {
-    await listed('compatible', ['qwen3-27b'], { key: null, baseUrl: 'https://ollama.lan:11434' })
-    pickModel('qwen3-27b')
-    typeIn(field('text'), 'ollama.lan')
-    await click(btn('Save and use the Coach')); await settle()
-    expect(mocks.toast).toHaveBeenCalledWith('not a valid URL')
-    expect(mocks.setCoachLocal).not.toHaveBeenCalled()
-    expect(mocks.nav).not.toHaveBeenCalled()
-  })
-
-  it('refuses on Save an endpoint field cleared after a successful listing', async () => {
-    // The same hole as above in the one shape the validator lets through: empty. Cleared after
-    // listing, Save would have written `baseUrl: null` and pointed the phone at nothing.
-    await listed('compatible', ['qwen3-27b'], { key: null, baseUrl: 'https://ollama.lan:11434' })
-    pickModel('qwen3-27b')
-    typeIn(field('text'), '')
-    await click(btn('Save and use the Coach')); await settle()
-    expect(mocks.toast).toHaveBeenCalledWith('Enter the endpoint URL')
-    expect(mocks.setCoachLocal).not.toHaveBeenCalled()
-    expect(mocks.nav).not.toHaveBeenCalled()
-  })
-
   // Issue #42: both of these used to leave the button greyed out for ever with no explanation.
   it('a settings write that fails says so, keeps you here and never stores the key', async () => {
-    await listed(null, ['claude-opus-5'])
+    await listed(['deepseek-flash'])
     mocks.setCoachLocal.mockRejectedValueOnce(new Error('could not write the settings file'))
     await click(btn('Save and use the Coach')); await settle()
     expect(mocks.toast).toHaveBeenCalledWith('could not write the settings file')
@@ -427,7 +323,7 @@ describe('CoachSetup — saving', () => {
   })
 
   it('a secure-store write that fails says so — but the mode is already on, by design', async () => {
-    await listed(null, ['claude-opus-5'])
+    await listed(['deepseek-flash'])
     vi.mocked(setApiKey).mockRejectedValueOnce(new Error('secure storage timed out'))
     await click(btn('Save and use the Coach')); await settle()
     expect(mocks.setCoachLocal).toHaveBeenCalledWith(expect.objectContaining({ mode: 'byok' }))
@@ -464,10 +360,11 @@ describe('CoachSetup — turning it off', () => {
     expect(mocks.nav).not.toHaveBeenCalled()                          // you stay on the screen
   })
 
-  it('starts the key picker on the provider the phone was already using', async () => {
+  it('starts the key picker on DeepSeek even if the phone had another provider saved', async () => {
     mocks.coachLocal = { mode: 'byok', provider: 'openai', model: 'gpt-5.6' }
     await mount(); await openByok()
-    expect(chip('OpenAI API').classList.contains('on')).toBe(true)
+    expect(chip('DeepSeek API').classList.contains('on')).toBe(true)
+    expect(chip('OpenAI API')).toBeUndefined()
     expect(field('password').getAttribute('placeholder')).toBe('sk-…')
   })
 })

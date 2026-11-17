@@ -987,7 +987,7 @@ Webhooks (`data/integrations/`) are in the archive too, their URLs and signing s
 with `data/secret` like the Coach's keys: restore both together, or every webhook has to be added
 again.
 
-API keys for the HTTPS providers (Anthropic, OpenAI, Gemini, a compatible endpoint) are the
+API keys for the HTTPS providers (Anthropic, OpenAI, Gemini, DeepSeek, a compatible endpoint) are the
 other way round: they are in `./data/coach.json`, encrypted with `./data/secret`, so they *are*
 in this archive — and unreadable without the secret next to them, like everything else in it.
 
